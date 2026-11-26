@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Printing Office — Print Queue Consolidation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- OFFLINE BANNER -->
+  <div id="offline-banner" class="offline-banner hidden">
+    <span>⚠️</span>
+    <span>Backend offline — please start the C++ server on <code>localhost:8080</code></span>
+    <button onclick="document.getElementById('offline-banner').classList.add('hidden')">✕</button>
+  </div>
+
+  <!-- ============================================================
+       SECTION 1: HEADER / DASHBOARD OVERVIEW
+       ============================================================ -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-left">
+        <div class="logo-row">
+          <span class="logo-icon">🖨️</span>
+          <div>
+            <h1 class="logo-title">The Printing Office</h1>
+            <p class="logo-subtitle">Print Queue Consolidation System — K-Way Merge via Linked Lists &amp; Min Heap</p>
+          </div>
+        </div>
+        <p class="system-desc">
+          This system consolidates print jobs from multiple departments into a single ordered timeline.
+          Each department maintains its jobs in a singly linked list (sorted by submission time), and
+          a min-heap orchestrates the K-way merge — always extracting the job with the smallest
+          timestamp. When timestamps tie, jobs are ordered lexicographically by department code,
+          producing a deterministic, fair output in <strong>O(N log K)</strong> time.
+        </p>
+      </div>
+      <div class="header-right">
+        <div class="backend-status" id="backend-status">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="status-label">Checking…</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-cards">
+      <div class="stat-card">
+        <div class="stat-icon">🏢</div>
+        <div class="stat-value" id="stat-depts">0</div>
+        <div class="stat-label">Total Departments</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📄</div>
+        <div class="stat-value" id="stat-jobs">0</div>
+        <div class="stat-label">Total Jobs</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔄</div>
+        <div class="stat-value" id="stat-queue-status">Idle</div>
+        <div class="stat-label">Queue Status</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">⚙️</div>
+        <div class="stat-value" id="stat-merge-status">Idle</div>
+        <div class="stat-label">Merge Status</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+
+    <!-- ============================================================
+         SECTION 2: DEPARTMENT QUEUE BUILDER
+         ============================================================ -->
+    <section class="card section-builder" id="section-builder">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">📋 Department Queue Builder</h2>
+          <p class="section-desc">Add departments and their print jobs. Jobs within each department must be in ascending time order.</p>
+        </div>
+        <div class="builder-actions">
+          <button class="btn btn-secondary" onclick="loadSampleData()">📂 Load Sample Data</button>
+          <button class="btn btn-secondary" onclick="resetAll()">↺ Reset All</button>
+          <button class="btn btn-primary" onclick="addDepartment()">＋ Add Department</button>
+        </div>
+      </div>
+
+      <div id="departments-container"></div>
+
+      <div class="builder-footer">
+        <button class="btn btn-accent btn-large" onclick="startMerge()" id="start-merge-btn">
+          ▶ START MERGE
+        </button>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 3: LINKED LIST VISUALIZATION
+         ============================================================ -->
+    <section class="card" id="section-linkedlists">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">🔗 Department Linked Lists</h2>
+          <p class="section-desc">Each department's queue rendered as a singly linked list.</p>
+        </div>
+      </div>
+      <div id="ll-container" class="ll-container">
+        <div class="empty-state">Add departments above to see linked list visualization.</div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 5: MERGE EXECUTION PANEL (shown after merge)
+         ============================================================ -->
+    <section class="card hidden" id="section-merge">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">⚙️ Merge Execution</h2>
+          <p class="section-desc">Step-by-step playback of the K-way merge algorithm.</p>
+        </div>
+      </div>
+
+      <div class="merge-layout">
+        <!-- SECTION 4: MIN HEAP VISUALIZATION -->
+        <div class="heap-panel">
+          <h3 class="panel-title">🏔️ Min Heap</h3>
+          <div id="heap-container" class="heap-container">
+            <div class="empty-state" id="heap-empty">Heap is empty</div>
+            <svg id="heap-svg" width="100%" height="300"></svg>
+          </div>
+        </div>
+
+        <div class="merge-controls-panel">
+          <!-- Progress -->
+          <div class="progress-row">
+            <span id="step-counter" class="step-counter">Step 0 of 0</span>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" id="progress-fill"></div>
+            </div>
+          </div>
+
+          <!-- Controls bar -->
+          <div class="controls-bar">
+            <button class="ctrl-btn" id="btn-prev" onclick="stepPrev()" title="Previous Step">⏮</button>
+            <button class="ctrl-btn" id="btn-pause" onclick="togglePause()" title="Pause/Resume">⏸</button>
+            <button class="ctrl-btn" id="btn-next" onclick="stepNext()" title="Next Step">⏭</button>
+            <button class="ctrl-btn" id="btn-reset-merge" onclick="resetMerge()" title="Reset">↺</button>
+            <div class="speed-control">
+              <label>Speed</label>
+              <input type="range" id="speed-slider" min="1" max="8" value="4" step="1" oninput="updateSpeed(this.value)" />
+              <span id="speed-label">1×</span>
+            </div>
+          </div>
+
+          <!-- Step log -->
+          <div class="step-log" id="step-log">
+            <div class="step-log-empty">Run a merge to see step-by-step log.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 6: FINAL MERGED TIMELINE
+         ============================================================ -->
+    <section class="card hidden" id="section-timeline">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">📅 Final Merged Timeline</h2>
+          <p class="section-desc">The consolidated print queue — ordered by time, ties broken by department code.</p>
+        </div>
+      </div>
+      <div class="timeline-scroll" id="timeline-container">
+        <div class="empty-state">No merge data yet.</div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 7: MERGE REPORT
+         ============================================================ -->
+    <section class="card hidden" id="section-report">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">📊 Merge Report</h2>
+          <p class="section-desc">Statistics, verification, and complexity analysis.</p>
+        </div>
+      </div>
+
+      <div class="report-grid" id="report-stats"></div>
+
+      <div class="verification-banner" id="verification-banner"></div>
+
+      <div class="complexity-row">
+        <div class="complexity-box">
+          <div class="complexity-label">Time Complexity</div>
+          <div class="complexity-value">O(N log K)</div>
+          <div class="complexity-desc">N = total jobs, K = departments. Each of N extractions costs O(log K) heap operations.</div>
+        </div>
+        <div class="complexity-box">
+          <div class="complexity-label">Space Complexity</div>
+          <div class="complexity-value">O(K)</div>
+          <div class="complexity-desc">The heap holds at most K elements at any time — one per active department.</div>
+        </div>
+      </div>
+
+      <div class="efficiency-compare">
+        <h4 class="efficiency-title">Efficiency Comparison</h4>
+        <div class="eff-row">
+          <span class="eff-name eff-good">Min Heap K-way Merge</span>
+          <div class="eff-bar-wrap">
+            <div class="eff-bar eff-bar-good" style="width:30%"></div>
+          </div>
+          <span class="eff-complexity">O(N log K)</span>
+        </div>
+        <div class="eff-row">
+          <span class="eff-name eff-bad">Repeated Sort</span>
+          <div class="eff-bar-wrap">
+            <div class="eff-bar eff-bar-bad" style="width:95%"></div>
+          </div>
+          <span class="eff-complexity">O(N² log N)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 8: TEST CASES
+         ============================================================ -->
+    <section class="card" id="section-tests">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">🧪 Test Cases</h2>
+          <p class="section-desc">Run predefined test cases against the backend to verify correctness.</p>
+        </div>
+        <div class="test-actions">
+          <button class="btn btn-secondary" onclick="runTest(1)">Run Test 1</button>
+          <button class="btn btn-secondary" onclick="runTest(2)">Run Test 2</button>
+          <button class="btn btn-secondary" onclick="runTest(3)">Run Test 3</button>
+          <button class="btn btn-secondary" onclick="runTest(4)">Run Test 4</button>
+          <button class="btn btn-danger" onclick="runStressTest()">🔥 Stress Test (100K jobs)</button>
+        </div>
+      </div>
+      <div id="test-results" class="test-results"></div>
+    </section>
+
+    <!-- ============================================================
+         SECTION 9: DEMONSTRATION MODE
+         ============================================================ -->
+    <section class="card" id="section-demo">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">💡 Demonstration Mode — FAQ</h2>
+          <p class="section-desc">Technical deep-dive into the algorithm design decisions.</p>
+        </div>
+        <button class="btn btn-secondary" id="demo-toggle" onclick="toggleDemo()">▼ Expand</button>
+      </div>
+      <div id="demo-panel" class="demo-panel hidden">
+        <div class="faq-list">
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>1. Why linked lists for department queues?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>Linked lists are ideal here because we only ever consume jobs from the <em>front</em> of each department's queue — a pure FIFO access pattern. Unlike arrays, a singly linked list allows O(1) removal of the head node without shifting elements. Memory is also allocated only for the jobs that exist, avoiding wasted capacity. This matches the real-world model where new print jobs arrive and are appended, while the merge engine always pulls the smallest pending job from the front.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>2. Why a min-heap for extraction?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>A min-heap maintains the global minimum across all department queues in O(log K) time per operation, where K is the number of departments. The root of the heap is always the job with the smallest submission time, so each extraction takes O(log K) for the subsequent heapify-down. The alternative — scanning all K department heads every extraction — would cost O(K) per step and O(NK) overall, which degrades badly as departments grow. The heap gives us guaranteed O(N log K) total time regardless of input distribution.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>3. Why insert only the first node of each department initially?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>The heap needs to hold at most one candidate per department at any time — the current smallest unprocessed job. Inserting all jobs upfront would bloat the heap to size N, making every heapify operation O(log N) instead of O(log K). By inserting only the head of each department's linked list, the heap stays bounded at size K throughout the entire merge. This is the key insight that keeps space complexity at O(K) rather than O(N).</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>4. Why insert the next node after each extraction?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>When a job is extracted from the heap and appended to the merged timeline, its department's queue advances by one node. The next job in that department's linked list (if it exists) is then inserted into the heap as the department's new representative. This "lazy replenishment" strategy ensures the heap always holds the current minimum candidate from each active department — no earlier, no later. This is what keeps the heap size at exactly K and maintains the O(N log K) guarantee.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>5. How does tie-breaking work?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>When two or more jobs have identical submission times, the min-heap's comparator breaks the tie using lexicographic ordering of department codes (e.g., "A" &lt; "B" &lt; "C"). This is a deterministic, fair policy — departments with alphabetically earlier codes get priority for equal-time jobs. If two jobs from the same department somehow tie (impossible in a valid sorted-per-dept input), the original position index serves as a final tiebreaker. The result is a fully deterministic, reproducible merged output.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>6. What happens when a department empties?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>When a department's last job is extracted from the heap, there is no successor node to insert. The department simply stops contributing candidates to the heap. The heap size decreases by one, and subsequent operations are slightly faster. The merge continues with the remaining K′ &lt; K active departments until the heap is completely empty, at which point the merged timeline is complete. Empty departments (queues with zero jobs) are skipped entirely during initialization.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>7. Why is the time complexity O(N log K)?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>There are N total jobs, and each job participates in exactly one heap insertion and one heap extraction. Each heap insertion triggers a heapify-up pass of at most ⌊log₂ K⌋ comparisons/swaps, and each extraction triggers a heapify-down of the same depth. The heap height is bounded by log₂ K because the heap never holds more than K elements. Therefore the total work is 2 × N × O(log K) = O(N log K). The N log K formula is tight — you can verify it empirically by comparing the comparison count from the stats panel against N × ⌊log₂ K⌋.</p>
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-question" onclick="toggleFaq(this)">
+              <span>8. Why is this better than repeatedly sorting?</span>
+              <span class="faq-arrow">▼</span>
+            </button>
+            <div class="faq-answer">
+              <p>A naïve approach would collect all N jobs into a single array and sort them — O(N log N) in the best case. But a truly naïve merge that repeatedly scans all queues to find the minimum runs in O(NK) time. Even if you sort each newly extracted batch, re-sorting a growing list after each insertion yields O(N² log N) in the worst case. The heap approach avoids all redundant comparisons: once a job's relative position is established by the heap structure, it is never re-compared unless a new job from its department challenges it. For large N and small K, the difference is orders of magnitude in practice.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <span>🖨️ The Printing Office — K-Way Merge DSA Project</span>
+    <span>Linked Lists + Min Heap · O(N log K)</span>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
